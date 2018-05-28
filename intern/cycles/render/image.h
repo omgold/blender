@@ -24,6 +24,8 @@
 #include "util/util_string.h"
 #include "util/util_thread.h"
 #include "util/util_vector.h"
+/* gchua: fixxxxx */
+#include "util/util_volume.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -150,6 +152,15 @@ private:
 	                     ImageDataType type,
 	                     int texture_limit,
 	                     device_vector<DeviceType>& tex_img);
+
+	template<TypeDesc::BASETYPE FileFormat,
+	         typename StorageType,
+	         typename DeviceType>
+	bool file_load_image(Image *img,
+	                     ImageDataType type,
+	                     int texture_limit,
+	                     device_vector<VolumeTile>& tex_img,
+	                     device_vector<int>& tex_helper);
 
 	int max_flattened_slot(ImageDataType type);
 	int type_index_to_flattened_slot(int slot, ImageDataType type);

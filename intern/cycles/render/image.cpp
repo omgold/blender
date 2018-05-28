@@ -22,7 +22,10 @@
 #include "util/util_logging.h"
 #include "util/util_path.h"
 #include "util/util_progress.h"
+#include "util/util_string.h"
 #include "util/util_texture.h"
+/* gchua: fix later */
+#include "util/util_volume.h"
 
 #ifdef WITH_OSL
 #include <OSL/oslexec.h>
@@ -192,6 +195,8 @@ bool ImageManager::get_image_metadata(const string& filename,
 	else {
 		metadata.type = (metadata.channels > 1) ? IMAGE_DATA_TYPE_BYTE4 : IMAGE_DATA_TYPE_BYTE;
 	}
+	VLOG(1) << filename;
+	VLOG(1) << metadata.type;
 
 	in->close();
 	delete in;
@@ -235,6 +240,8 @@ string ImageManager::name_from_type(int type)
 		return "half4";
 	else if(type == IMAGE_DATA_TYPE_HALF)
 		return "half";
+	else if(type == IMAGE_DATA_TYPE_VOLUME)
+		return "volume";
 	else
 		return "byte4";
 }
@@ -574,6 +581,7 @@ bool ImageManager::file_load_image(Image *img,
 	 * but device doesn't support single channel textures.
 	 */
 	bool is_rgba = (type == IMAGE_DATA_TYPE_FLOAT4 ||
+	                type == IMAGE_DATA_TYPE_VOLUME ||
 	                type == IMAGE_DATA_TYPE_HALF4 ||
 	                type == IMAGE_DATA_TYPE_BYTE4);
 	if(is_rgba) {
@@ -682,6 +690,71 @@ bool ImageManager::file_load_image(Image *img,
 	return true;
 }
 
+
+/* If volume, call this to convert to sparse grid. */
+template<TypeDesc::BASETYPE FileFormat,
+         typename StorageType,
+         typename DeviceType>
+bool ImageManager::file_load_image(Image *img,
+                                   ImageDataType type,
+                                   int texture_limit,
+                                   device_vector<VolumeTile>& tex_img,
+                                   device_vector<int>& tex_helper)
+{
+
+	device_vector<DeviceType> *tex_img_raw
+		= new device_vector<DeviceType>(NULL, img->mem_name.c_str(), MEM_TEXTURE);
+
+	if(!file_load_image<FileFormat, StorageType, DeviceType>(img, type, texture_limit, *tex_img_raw)) {
+		 return false;
+	}
+
+	VLOG(1) << "Memory usage of raw volume texture: "
+		    << string_human_readable_size(tex_img_raw->memory_size());
+
+	DeviceType *data = tex_img_raw->data();
+	size_t tile_width = compute_tile_resolution(tex_img_raw->data_width);
+	size_t tile_height = compute_tile_resolution(tex_img_raw->data_height);
+	size_t tile_depth = compute_tile_resolution(tex_img_raw->data_depth);
+
+	vector<VolumeTile> sparse_grid;
+	vector<int> indexes;
+	create_sparse_grid(data,
+	                   tex_img_raw->data_width,
+	                   tex_img_raw->data_height,
+	                   tex_img_raw->data_depth,
+	                   sparse_grid,
+	                   indexes);
+
+	VolumeTile *texture_pixels;
+	int *texture_indexes;
+	{
+		/* Since only active tiles are stored in tex_img, its
+		 * allocated memory will be less than the actual resolution
+		 * of the volume. We store the true resolution (in tiles) in the
+		 * tex_helper instead, since it needs to be allocated enough
+		 * space to track all tiles anyway. */
+		thread_scoped_lock device_lock(device_mutex);
+		texture_pixels = (VolumeTile*)tex_img.alloc(sparse_grid.size());
+		texture_indexes = (int*)tex_helper.alloc(tile_width,
+												 tile_height,
+												 tile_depth);
+	}
+
+	memcpy(texture_pixels,
+		   &sparse_grid[0],
+		   sparse_grid.size() * sizeof(VolumeTile));
+
+	memcpy(texture_indexes,
+		   &indexes[0],
+		   indexes.size() * sizeof(int));
+
+	VLOG(1) << "Memory usage of sparse grid: "
+	        << string_human_readable_size(tex_img.memory_size());
+
+	return true;
+}
+
 void ImageManager::device_load_image(Device *device,
                                      Scene *scene,
                                      ImageDataType type,
@@ -705,9 +778,13 @@ void ImageManager::device_load_image(Device *device,
 	int flat_slot = type_index_to_flattened_slot(slot, type);
 	img->mem_name = string_printf("__tex_image_%s_%03d", name_from_type(type).c_str(), flat_slot);
 
-	/* Free previous texture in slot. */
+	/* Free previous texture(s) in slot. */
 	if(img->mem) {
 		thread_scoped_lock device_lock(device_mutex);
+		if(img->mem->helper) {
+			delete img->mem->helper;
+			img->mem->helper = NULL;
+		}
 		delete img->mem;
 		img->mem = NULL;
 	}
@@ -856,6 +933,29 @@ void ImageManager::device_load_image(Device *device,
 
 		thread_scoped_lock device_lock(device_mutex);
 		tex_img->copy_to_device();
+	}
+	else if(type == IMAGE_DATA_TYPE_VOLUME) {
+		device_vector<VolumeTile> *tex_img
+			= new device_vector<VolumeTile>(device, img->mem_name.c_str(), MEM_TEXTURE);
+		device_vector<int> *tex_helper
+			= new device_vector<int>(device, (img->mem_name + "_helper").c_str(), MEM_TEXTURE);
+
+		if(!file_load_image<TypeDesc::FLOAT, float, float4>(img,
+															type,
+															texture_limit,
+															*tex_img,
+															*tex_helper)) {
+			 /* todo (gchua): fix this later */
+		}
+
+		tex_img->helper = tex_helper;
+		img->mem = tex_img;
+		img->mem->interpolation = img->interpolation;
+		img->mem->extension = img->extension;
+
+		thread_scoped_lock device_lock(device_mutex);
+		tex_img->copy_to_device();
+		tex_helper->copy_to_device();
 	}
 
 	img->need_load = false;

@@ -22,6 +22,7 @@
 #include "util/util_logging.h"
 #include "util/util_progress.h"
 #include "util/util_types.h"
+#include "util/util_volume.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -112,8 +113,6 @@ struct VolumeParams {
 	float3 start_point;
 	int pad_size;
 };
-
-static const int CUBE_SIZE = 8;
 
 /* Create a mesh from a volume.
  *

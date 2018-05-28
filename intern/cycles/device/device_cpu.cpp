@@ -52,6 +52,8 @@
 #include "util/util_progress.h"
 #include "util/util_system.h"
 #include "util/util_thread.h"
+/* gchua: fix later */
+#include "util/util_volume.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -375,9 +377,14 @@ public:
 
 	void tex_alloc(device_memory& mem)
 	{
+		size_t total_memory = mem.memory_size();
+		if(mem.helper != NULL) {
+			total_memory += mem.helper->memory_size();
+		}
+
 		VLOG(1) << "Texture allocate: " << mem.name << ", "
-		        << string_human_readable_number(mem.memory_size()) << " bytes. ("
-		        << string_human_readable_size(mem.memory_size()) << ")";
+		        << string_human_readable_number(total_memory) << " bytes. ("
+		        << string_human_readable_size(total_memory) << ")";
 
 		if(mem.interpolation == INTERPOLATION_NONE) {
 			/* Data texture. */
@@ -408,16 +415,38 @@ public:
 			info.cl_buffer = 0;
 			info.interpolation = mem.interpolation;
 			info.extension = mem.extension;
-			info.width = mem.data_width;
-			info.height = mem.data_height;
-			info.depth = mem.data_depth;
-
+			if(mem.helper != NULL) {
+				/* If mem is a sparse volume, its real (tile) dimensions
+				 * are stored in the helper texture. */
+				info.width = mem.helper->data_width * CUBE_SIZE;
+				info.height = mem.helper->data_height * CUBE_SIZE;
+				info.depth = mem.helper->data_depth * CUBE_SIZE;
+				info.indexes = (uint64_t)mem.helper->host_pointer;
+			}
+			else {
+				info.width = mem.data_width;
+				info.height = mem.data_height;
+				info.depth = mem.data_depth;
+				/* todo (gchua): what if the valid host pointer is 0 */
+				info.indexes = (uint64_t)0;
+			}
+			VLOG(1) << "Texture width: " << mem.data_width << ", " << info.width;
+			VLOG(1) << "Texture height: " << mem.data_height << ", " << info.height;
+			VLOG(1) << "Texture depth: " << mem.data_depth << ", " << info.depth;
+			VLOG(1) << "Texture helper: " << info.indexes;
 			need_texture_info = true;
 		}
 
 		mem.device_pointer = (device_ptr)mem.host_pointer;
 		mem.device_size = mem.memory_size();
 		stats.mem_alloc(mem.device_size);
+
+		if(mem.helper != NULL) {
+			mem.helper->device_pointer = (device_ptr)mem.helper->host_pointer;
+			mem.helper->device_size = mem.helper->memory_size();
+			stats.mem_alloc(mem.helper->device_size);
+		}
+
 	}
 
 	void tex_free(device_memory& mem)

@@ -53,6 +53,7 @@ typedef enum ImageDataType {
 	IMAGE_DATA_TYPE_FLOAT = 3,
 	IMAGE_DATA_TYPE_BYTE = 4,
 	IMAGE_DATA_TYPE_HALF = 5,
+	IMAGE_DATA_TYPE_VOLUME = 6,
 
 	IMAGE_DATA_NUM_TYPES
 } ImageDataType;
@@ -77,6 +78,8 @@ typedef enum ExtensionType {
 typedef struct TextureInfo {
 	/* Pointer, offset or texture depending on device. */
 	uint64_t data;
+	/* References the indexes for sparse volumes. */
+	uint64_t indexes;
 	/* Buffer number for OpenCL. */
 	uint cl_buffer;
 	/* Interpolation and extension type. */

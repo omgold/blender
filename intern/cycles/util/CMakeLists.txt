@@ -23,6 +23,7 @@ set(SRC
 	util_thread.cpp
 	util_time.cpp
 	util_transform.cpp
+    util_volume.cpp
 	util_windows.cpp
 )
 
@@ -121,6 +122,7 @@ set(SRC_HEADERS
 	util_vector.h
 	util_version.h
 	util_view.h
+    util_volume.h
 	util_windows.h
 	util_xml.h
 )
