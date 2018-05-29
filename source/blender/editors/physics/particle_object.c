@@ -674,6 +674,7 @@ static bool remap_hair_emitter(Scene *scene, Object *ob, ParticleSystem *psys,
 	int i, k;
 	float from_ob_imat[4][4], to_ob_imat[4][4];
 	float from_imat[4][4], to_imat[4][4];
+	bool use_modifier_stack;
 
 	if (!target_psmd->dm_final)
 		return false;
@@ -682,6 +683,8 @@ static bool remap_hair_emitter(Scene *scene, Object *ob, ParticleSystem *psys,
 	if (!target_psys->part || target_psys->part->type != PART_HAIR)
 		return false;
 	
+	use_modifier_stack = psys->part->use_modifier_stack;
+	
 	edit_point = target_edit ? target_edit->points : NULL;
 	
 	invert_m4_m4(from_ob_imat, ob->obmat);
@@ -689,7 +692,7 @@ static bool remap_hair_emitter(Scene *scene, Object *ob, ParticleSystem *psys,
 	invert_m4_m4(from_imat, from_mat);
 	invert_m4_m4(to_imat, to_mat);
 	
-	if (target_psmd->dm_final->deformedOnly) {
+	if (target_psmd->dm_final->deformedOnly || use_modifier_stack) {
 		/* we don't want to mess up target_psmd->dm when converting to global coordinates below */
 		dm = target_psmd->dm_final;
 	}
@@ -725,7 +728,6 @@ static bool remap_hair_emitter(Scene *scene, Object *ob, ParticleSystem *psys,
 		dm->release(dm);
 		return false;
 	}
-
 	for (i = 0, tpa = target_psys->particles, pa = psys->particles;
 	     i < target_psys->totpart;
 	     i++, tpa++, pa++) {
@@ -767,7 +769,12 @@ static bool remap_hair_emitter(Scene *scene, Object *ob, ParticleSystem *psys,
 			tpa->foffset = 0.0f;
 
 			tpa->num = nearest.index;
-			tpa->num_dmcache = psys_particle_dm_face_lookup(target_dm, dm, tpa->num, tpa->fuv, NULL);
+			if (use_modifier_stack) {
+				tpa->num_dmcache = DMCACHE_ISCHILD;
+			}
+			else {
+				tpa->num_dmcache = psys_particle_dm_face_lookup(target_dm, dm, tpa->num, tpa->fuv, NULL);
+			}
 		}
 		else {
 			me = &medge[nearest.index];
