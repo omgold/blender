@@ -1465,7 +1465,7 @@ void FLUID_3D::addVorticity(int zBegin, int zEnd)
 	int _blockSize=zEnd-zBegin;
 	int _blockTotalCells = _slabSize * (_blockSize+2);
 
-	float *_xVorticity, *_yVorticity, *_zVorticity, *_vorticity;
+	float *_xVorticity, *_yVorticity, *_zVorticity, *_vorticity, *_helicity;
 
 	int bb=0;
 	int bt=0;
@@ -1479,11 +1479,13 @@ void FLUID_3D::addVorticity(int zBegin, int zEnd)
 	_yVorticity = new float[_blockTotalCells];
 	_zVorticity = new float[_blockTotalCells];
 	_vorticity = new float[_blockTotalCells];
+	_helicity = new float[_blockTotalCells];
 
 	memset(_xVorticity, 0, sizeof(float)*_blockTotalCells);
 	memset(_yVorticity, 0, sizeof(float)*_blockTotalCells);
 	memset(_zVorticity, 0, sizeof(float)*_blockTotalCells);
 	memset(_vorticity, 0, sizeof(float)*_blockTotalCells);
+	memset(_helicity, 0, sizeof(float)*_blockTotalCells);
 
 	//const size_t indexsetupV=_slabSize;
 	const size_t index_ = _slabSize + _xRes + 1;
@@ -1552,7 +1554,10 @@ void FLUID_3D::addVorticity(int zBegin, int zEnd)
 					_vorticity[vIndex] = sqrtf(_xVorticity[vIndex] * _xVorticity[vIndex] +
 						_yVorticity[vIndex] * _yVorticity[vIndex] +
 						_zVorticity[vIndex] * _zVorticity[vIndex]);
-
+                    _helicity[vIndex] =
+                        (xV[1] - xV[0])*_xVorticity[vIndex] +
+                        (yV[1] - yV[0])*_yVorticity[vIndex] +
+                        (zV[1] - zV[0])*_yVorticity[vIndex];
 				}
 				vIndex++;
 			}
@@ -1603,13 +1608,24 @@ void FLUID_3D::addVorticity(int zBegin, int zEnd)
 					{
 						float flame_vort = (_fuel) ? _fuel[index]*flame_vorticity : 0.0f;
 						magnitude = 1.0f / magnitude;
-						N[0] *= magnitude;
-						N[1] *= magnitude;
-						N[2] *= magnitude;
 
-						_xForce[index] += (N[1] * _zVorticity[vIndex] - N[2] * _yVorticity[vIndex]) * _dx * (eps + flame_vort);
-						_yForce[index] += (N[2] * _xVorticity[vIndex] - N[0] * _zVorticity[vIndex]) * _dx * (eps + flame_vort);
-						_zForce[index] += (N[0] * _yVorticity[vIndex] - N[1] * _xVorticity[vIndex]) * _dx * (eps + flame_vort);
+						float v = _vorticity[vIndex];
+
+						if (v > FLT_EPSILON || v < -FLT_EPSILON) {
+								// ad-hoc scaling factor of 10, to be roughly comparable to case without adaptive vorticity
+							float adaptive_scale = 10.f * _helicity[vIndex]/v;
+							if (adaptive_scale<0)
+								adaptive_scale = -adaptive_scale;
+							magnitude *= adaptive_scale;
+
+							N[0] *= magnitude;
+							N[1] *= magnitude;
+							N[2] *= magnitude;
+
+							_xForce[index] += (N[1] * _zVorticity[vIndex] - N[2] * _yVorticity[vIndex]) * _dx * (eps + flame_vort);
+							_yForce[index] += (N[2] * _xVorticity[vIndex] - N[0] * _zVorticity[vIndex]) * _dx * (eps + flame_vort);
+							_zForce[index] += (N[0] * _yVorticity[vIndex] - N[1] * _xVorticity[vIndex]) * _dx * (eps + flame_vort);
+						}
 					}
 					}	// if
 					vIndex++;
@@ -1623,6 +1639,7 @@ void FLUID_3D::addVorticity(int zBegin, int zEnd)
 	if (_yVorticity) delete[] _yVorticity;
 	if (_zVorticity) delete[] _zVorticity;
 	if (_vorticity) delete[] _vorticity;
+	if (_helicity) delete[] _helicity;
 }
 
 
