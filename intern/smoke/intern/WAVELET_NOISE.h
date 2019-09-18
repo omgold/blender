@@ -62,6 +62,7 @@ static const int noiseTileSize = NOISE_TILE_SIZE;
 // warning - noiseTileSize has to be 128^3!
 #define modFast128(x) ((x) & 127)
 #define modFast64(x)  ((x) & 63)
+//#define modFast128(x) ((x) & 31)
 #define DOWNCOEFFS 0.000334f,-0.001528f, 0.000410f, 0.003545f,-0.000938f,-0.008233f, 0.002172f, 0.019120f, \
                   -0.005040f,-0.044412f, 0.011655f, 0.103311f,-0.025936f,-0.243780f, 0.033979f, 0.655340f, \
                    0.655340f, 0.033979f,-0.243780f,-0.025936f, 0.103311f, 0.011655f,-0.044412f,-0.005040f, \
@@ -414,8 +415,9 @@ static inline float WNoiseDx(Vec3 p, float* data) {
   w[2][1] = 1 - w[2][0] - w[2][2];
  
   // to optimize, explicitly unroll this loop
-  for (int z = -1; z <=1; z++)
-    for (int y = -1; y <=1; y++)
+  for (int z = -1; z <=1; z++) {
+    for (int y = -1; y <=1; y++) {
+      float r[3];
       for (int x = -1; x <=1; x++)
       {
         float weight = 1.0f;
@@ -426,7 +428,11 @@ static inline float WNoiseDx(Vec3 p, float* data) {
         c[2] = modFast128(mid[2] + z);
         weight *= w[2][z+1];
         result += weight * data[c[2]*n*n+c[1]*n+c[0]];
+        r[x+1] = weight * data[c[2]*n*n+c[1]*n+c[0]];
       }
+      //result += r[0] + r[1] + r[2];
+    }
+  }
  return result;
 }
 
@@ -457,7 +463,8 @@ static inline float WNoiseDy(Vec3 p, float* data) {
   
   // to optimize, explicitly unroll this loop
   for (int z = -1; z <=1; z++)
-    for (int y = -1; y <=1; y++)
+    for (int y = -1; y <=1; y++) {
+      float r[3];
       for (int x = -1; x <=1; x++)
       {
         float weight = 1.0f;
@@ -468,8 +475,10 @@ static inline float WNoiseDy(Vec3 p, float* data) {
         c[2] = modFast128(mid[2] + z);
         weight *= w[2][z+1];
         result += weight * data[c[2]*n*n+c[1]*n+c[0]];
+        r[x+1] = weight * data[c[2]*n*n+c[1]*n+c[0]];
       }
-
+      //result += r[0] + r[1] + r[2];
+    }
   return result;
 }
 
@@ -500,7 +509,8 @@ static inline float WNoiseDz(Vec3 p, float* data) {
 
   // to optimize, explicitly unroll this loop
   for (int z = -1; z <=1; z++)
-    for (int y = -1; y <=1; y++)
+    for (int y = -1; y <=1; y++) {
+      float r[3];
       for (int x = -1; x <=1; x++)
       {
         float weight = 1.0f;
@@ -511,7 +521,10 @@ static inline float WNoiseDz(Vec3 p, float* data) {
         c[2] = modFast128(mid[2] + z);
         weight *= w[2][z+1];
         result += weight * data[c[2]*n*n+c[1]*n+c[0]];
+        r[x+1] = weight * data[c[2]*n*n+c[1]*n+c[0]];
       }
+      //result += r[0] + r[1] + r[2];
+    }
   return result;
 }
 
